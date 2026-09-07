@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Automated Evolutionary Search-Based Compiler Code Optimizer</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+
+    <header class="topbar">
+        <div class="container topbar-inner">
+            <div>
+                <h1>Automated Evolutionary Search-Based Compiler Code Optimizer</h1>
+                <p class="subtitle">
+                    A compiler front-end + optimization pipeline whose optimization
+                    pass <em>ordering</em> is discovered by a Genetic Algorithm,
+                    not fixed by hand.
+                </p>
+            </div>
+        </div>
+    </header>
+
+    <main class="container">
+
+        <!-- 1. Source input -->
+        <section class="card">
+            <div class="card-header">
+                <h2>1. Source Code Input</h2>
+                <div class="example-buttons">
+                    <span class="example-label">Load example:</span>
+                    <button class="btn btn-ghost" data-example="basic">Basic / CSE</button>
+                    <button class="btn btn-ghost" data-example="branch">If / Else</button>
+                    <button class="btn btn-ghost" data-example="loop">While Loop</button>
+                </div>
+            </div>
+            <textarea id="source-input" spellcheck="false"></textarea>
+            <div class="card-footer">
+                <button id="analyze-btn" class="btn btn-primary">Analyze &amp; Optimize Code</button>
+                <span id="status-msg" class="status-msg"></span>
+            </div>
+        </section>
+
+        <div id="error-box" class="error-box hidden"></div>
+
+        <div id="results" class="hidden">
+
+            <!-- 2. Tokens -->
+            <section class="card">
+                <div class="card-header"><h2>2. Lexical Analysis &mdash; Tokens</h2></div>
+                <div class="table-scroll">
+                    <table id="tokens-table" class="data-table">
+                        <thead><tr><th>#</th><th>Type</th><th>Value</th><th>Line</th><th>Col</th></tr></thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- 3. AST -->
+            <section class="card">
+                <div class="card-header"><h2>3. Parsing &mdash; Abstract Syntax Tree</h2></div>
+                <div id="ast-tree" class="ast-tree"></div>
+            </section>
+
+            <!-- 4. TAC -->
+            <section class="card">
+                <div class="card-header">
+                    <h2>4. Intermediate Representation &mdash; Three-Address Code</h2>
+                    <span id="tac-count" class="badge"></span>
+                </div>
+                <pre id="tac-code" class="code-block"></pre>
+            </section>
+
+            <!-- 5/6. Optimization comparison -->
+            <section class="card-grid">
+                <div class="card">
+                    <div class="card-header"><h2>5. Traditional Fixed-Order Optimization</h2></div>
+                    <p class="pass-sequence-label">Fixed pass sequence:</p>
+                    <div id="traditional-sequence" class="sequence-pills"></div>
+                    <pre id="traditional-code" class="code-block"></pre>
+                    <div id="traditional-metrics" class="metrics-mini"></div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header"><h2>6. Evolutionary (GA) Optimization</h2></div>
+                    <p class="pass-sequence-label">Best sequence discovered by the GA:</p>
+                    <div id="evolutionary-sequence" class="sequence-pills"></div>
+                    <pre id="evolutionary-code" class="code-block"></pre>
+                    <div id="evolutionary-metrics" class="metrics-mini"></div>
+                </div>
+            </section>
+
+            <!-- 7. GA evolution history -->
+            <section class="card">
+                <div class="card-header">
+                    <h2>7. Genetic Algorithm Evolution Progress</h2>
+                    <span id="ga-summary" class="badge"></span>
+                </div>
+                <div id="fitness-chart" class="fitness-chart"></div>
+                <div class="table-scroll">
+                    <table id="history-table" class="data-table small">
+                        <thead><tr><th>Generation</th><th>Best Fitness</th><th>Avg Fitness</th><th>Best Sequence So Far</th></tr></thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- 8. Performance comparison dashboard -->
+            <section class="card">
+                <div class="card-header"><h2>8. Performance Comparison Dashboard</h2></div>
+                <div id="comparison-dashboard" class="dashboard"></div>
+                <div class="table-scroll">
+                    <table id="comparison-table" class="data-table">
+                        <thead>
+                            <tr><th>Metric</th><th>Original</th><th>Traditional Optimization</th><th>Evolutionary Optimization</th></tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+                <div id="winner-banner" class="winner-banner"></div>
+            </section>
+
+        </div>
+    </main>
+
+    <footer class="footer">
+        <div class="container">
+            <p>Final Year B.Tech CSE Project &mdash; Compiler Design &middot; Evolutionary Search-Based Optimization</p>
+        </div>
+    </footer>
+
+    <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+</body>
+</html>
