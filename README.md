@@ -6,6 +6,43 @@ with a library of classic optimization passes, whose **execution order**
 is discovered automatically by a **Genetic Algorithm** instead of being
 hard-coded by the programmer.
 
+The whole thing is deliberately kept simple on purpose: 6 optimization
+passes (no more), a plain textbook genetic algorithm (fixed-length
+chromosomes, no exotic operators), and a 2-factor fitness formula with
+round, obvious weights. Nothing in here needs a research paper to
+justify -- see Section 0 below for the one-minute version.
+
+---
+
+## 0. Explain This Project in One Minute (for viva)
+
+1. **"We built a tiny compiler."** It reads simple C-like code (`int`,
+   `if`/`else`, `while`, `print`), turns it into tokens, then an AST,
+   then Three-Address Code (TAC) -- the standard textbook pipeline.
+2. **"We wrote 6 optimization passes."** Constant Folding, Constant
+   Propagation, Copy Propagation, Common Subexpression Elimination,
+   Dead Code Elimination, Strength Reduction -- each one is a small,
+   independent function that takes TAC in and gives back smaller/better
+   TAC.
+3. **"Running them in a fixed order isn't always best."** Some orders
+   expose more opportunities than others (Section 8 shows a real
+   example: reordering two passes shrinks the same program from 6
+   instructions down to 3).
+4. **"So we used a Genetic Algorithm to search for a better order."** A
+   chromosome is just a list of 6 pass names. We start with 30 random
+   lists, score each one, keep the best ones, breed and mutate them for
+   40 generations, and keep the best sequence ever found.
+5. **"How do we know it's not cheating?"** Before trusting any
+   sequence's score, we actually *run* the optimized program and check
+   its output still matches the original. If it doesn't, that
+   sequence scores zero -- no matter how small the code got.
+6. **"The score itself is simple too."** `fitness = 70% × (fewer
+   instructions) + 30% × (cheaper instructions)`. That's it -- two
+   numbers, two round weights.
+
+That's the whole project. Everything below is the same six points,
+written out in full detail.
+
 ---
 
 ## 1. Problem Statement
@@ -22,11 +59,10 @@ in compiler construction.
 
 This project treats phase ordering as a **search problem**: it encodes
 candidate pass orderings as chromosomes and uses a Genetic Algorithm to
-search for the ordering that produces the smallest, cheapest, most
-efficient code for the *specific* program being compiled -- while a
-built-in interpreter-based correctness check guarantees the search can
-never accept a sequence that changes what the program actually
-computes.
+search for the ordering that produces the smallest, cheapest code for
+the *specific* program being compiled -- while a built-in
+interpreter-based correctness check guarantees the search can never
+accept a sequence that changes what the program actually computes.
 
 ## 2. Objectives
 
@@ -34,14 +70,14 @@ computes.
    simplified C-like language.
 2. Lower the AST into Three-Address Code (TAC), a standard intermediate
    representation.
-3. Implement seven classic, independently-testable optimization passes
+3. Implement six classic, independently-testable optimization passes
    operating on TAC.
-4. Implement a genuinely functional Genetic Algorithm (selection,
-   crossover, mutation, elitism) that searches the space of pass
-   *sequences* for the fittest one.
-5. Design and justify a fitness function that rewards smaller, cheaper,
-   more efficient code while hard-rejecting semantically incorrect
-   transformations.
+4. Implement a genuinely functional, textbook-simple Genetic Algorithm
+   (selection, crossover, mutation, elitism) that searches the space of
+   pass *sequences* for the fittest one.
+5. Design and justify a small, easy-to-defend fitness function that
+   rewards smaller, cheaper code while hard-rejecting semantically
+   incorrect transformations.
 6. Compare a traditional fixed-order optimizer against the
    evolutionary one on the same program, with concrete metrics.
 7. Present all of this through a clean web dashboard.
@@ -56,20 +92,22 @@ computes.
   branches and loops.
 - A tiny TAC **interpreter** used purely as a correctness oracle (see
   Section 6).
-- Seven optimization passes: Constant Folding, Constant Propagation, Copy
+- Six optimization passes: Constant Folding, Constant Propagation, Copy
   Propagation, Common Subexpression Elimination, Dead Code Elimination,
-  Strength Reduction, Loop-Invariant Code Motion.
-- A real Genetic Algorithm (population of 30, 40 generations by
-  default) with tournament selection, single-point crossover,
-  point + structural mutation, and elitism.
-- A documented, weighted, multi-factor fitness function.
+  Strength Reduction.
+- A real, textbook-simple Genetic Algorithm (population of 30, 40
+  generations by default) with tournament selection, single-point
+  crossover, point mutation, and elitism -- every chromosome is a
+  fixed length of 6 genes, so there is no special-case bookkeeping
+  anywhere in the algorithm.
+- A 2-factor fitness function with plain 70/30 weights.
 - A Flask backend exposing one JSON API (`/api/analyze`) that runs the
   entire pipeline twice (fixed order vs. GA-discovered order) and
   returns everything the dashboard needs.
 - A single-page dashboard: tokens table, AST tree, TAC listing,
   side-by-side optimization comparison, a generation-by-generation
   fitness chart, and a performance comparison table.
-- 32 automated unit/integration tests covering every pass, the parser,
+- 29 automated unit/integration tests covering every pass, the parser,
   the IR generator, the fitness function, and end-to-end semantic
   preservation.
 
@@ -187,7 +225,8 @@ computes the same thing as the original -- see Section 7.
 ## 6. Optimization Passes (`optimizations/`)
 
 Every pass is a small class with `apply(instructions) -> instructions`,
-independently unit-tested in `tests/test_optimizer.py`.
+independently unit-tested in `tests/test_optimizer.py`. Six passes,
+no more -- deliberately kept to the classic textbook set.
 
 | Pass | File | What it does |
 |---|---|---|
@@ -197,7 +236,6 @@ independently unit-tested in `tests/test_optimizer.py`.
 | **Common Subexpression Elimination** | `common_subexpression.py` | If `a + b` was already computed in the current basic block and neither operand has changed since, reuse the earlier result instead of recomputing it (handles commutative operators and self-referential updates like `a = a + b` correctly). |
 | **Dead Code Elimination** | `dead_code_elimination.py` | Iteratively removes any instruction whose result is never used anywhere in the remaining program (fixed-point, so it cascades). |
 | **Strength Reduction** | `strength_reduction.py` | Replaces an expensive operation with a cheaper equivalent, e.g. `x * 2` -> `x + x`, `x * 1` -> `x`, `x * 0` -> `0`, `x / 1` -> `x`. |
-| **Loop-Invariant Code Motion** | `loop_invariant_code_motion.py` | Hoists a computation out of a loop's "preheader" when its value never changes across iterations (both operands are constants or variables never written inside the loop), so it runs once instead of once per iteration. Restricted to straight-line loop bodies (no nested `if`/`while`) and never hoists division, to keep the "always executes, never introduces a new error" analysis simple and safe. |
 
 All label-crossing dataflow facts (known constants, known copies,
 available expressions) are conservatively cleared at every `label`,
@@ -210,14 +248,14 @@ A **fixed traditional sequence** is also defined
 order" baseline the evolutionary search is compared against:
 
 ```
-ConstantPropagation -> ConstantFolding -> CopyPropagation -> LoopInvariantCodeMotion ->
+ConstantPropagation -> ConstantFolding -> CopyPropagation ->
 CommonSubexpressionElimination -> StrengthReduction -> DeadCodeElimination
 ```
 
 ## 7. The Evolutionary Search Engine (`evolutionary/`)
 
 ### 7.1 Why evolutionary search?
-Applying all seven passes once, in *some* order, is not enough:
+Applying all six passes once, in *some* order, is not enough:
 propagation can expose new folding opportunities, folding can expose
 new dead code, removing dead code can expose new common subexpressions,
 and so on. A single fixed pass only "sees" what came before it in that
@@ -228,66 +266,67 @@ different programs. Rather than hand-tune this per program, we let a
 Genetic Algorithm search for it.
 
 ### 7.2 Chromosome representation (`evolutionary/chromosome.py`)
-A chromosome is simply an ordered list of pass names -- a candidate
+A chromosome is a **fixed-length** list of 6 pass names -- a candidate
 "optimization strategy":
 
 ```python
-["ConstantFolding", "ConstantPropagation", "CopyPropagation", "DeadCodeElimination"]
+["ConstantFolding", "ConstantPropagation", "CopyPropagation",
+ "DeadCodeElimination", "ConstantFolding", "StrengthReduction"]
 ```
 
-Genes are drawn from the seven pass names; sequence length varies (3-8
-genes by default) and is itself part of what the GA searches over, so
-the algorithm can discover that, e.g., repeating `ConstantPropagation`
-after `DeadCodeElimination` helps.
+Every chromosome is exactly `CHROMOSOME_LENGTH = 6` genes long, and a
+pass name may repeat (running `ConstantPropagation` twice, as above, is
+a perfectly valid strategy -- and Section 8's example shows exactly why
+that can help). Keeping every chromosome the same length is what keeps
+crossover and mutation trivial to implement and explain: there is no
+"what if the two parents are different lengths" case to handle
+anywhere in the code.
 
 ### 7.3 Fitness function (`evolutionary/fitness.py`)
 
-**Step 1 -- correctness gate.** The candidate sequence is applied to the
-program's TAC, and the *optimized* TAC is executed by the interpreter
-from Section 5.4. Its `print()` output is compared against the
-*original* program's output. If they differ (or applying the sequence
-raises any error, or the code fails to run), the candidate is rejected
-outright: **fitness = 0**. This is a hard constraint, not a soft
-penalty -- it is the guarantee that the search can never converge on a
-sequence that "optimizes" a program into a different, faster, but
-*wrong* program.
+**Step 1 -- correctness gate ("did we break the program?").** The
+candidate sequence is applied to the program's TAC, and the
+*optimized* TAC is executed by the interpreter from Section 5.4. Its
+`print()` output is compared against the *original* program's output.
+If they differ (or applying the sequence raises any error, or the code
+fails to run), the candidate is rejected outright: **fitness = 0**.
+This is a hard constraint, not a soft penalty -- it is the guarantee
+that the search can never converge on a sequence that "optimizes" a
+program into a different, smaller, but *wrong* program.
 
-**Step 2 -- weighted improvement score**, for sequences that pass the gate:
+**Step 2 -- weighted improvement score ("how much smaller/cheaper?"),**
+for sequences that pass the gate:
 
 ```
-fitness = 100 * ( 0.35 * instruction_reduction
-                 + 0.25 * cost_reduction
-                 + 0.20 * operation_reduction
-                 + 0.10 * temp_variable_reduction
-                 + 0.10 * parsimony_bonus )
+fitness = 100 * (0.7 * instruction_reduction + 0.3 * cost_reduction)
 ```
 
 | Term | Meaning |
 |---|---|
-| `instruction_reduction` | `(orig_count - opt_count) / orig_count` -- fewer TAC instructions. |
-| `cost_reduction` | `(orig_cost - opt_cost) / orig_cost`, where `estimate_cost` weights instructions by *approximate* execution cost (multiply=3, divide=4, add/sub/compare=2, everything else=1). This is what actually rewards Strength Reduction even when instruction *count* is unchanged. |
-| `operation_reduction` | Reduction in the number of `binop` instructions -- rewards folding/CSE/strength-reduction directly. |
-| `temp_variable_reduction` | Reduction in the number of compiler-generated temporaries -- a proxy for lower register pressure. |
-| `parsimony_bonus` | `1 / len(sequence)` -- a mild preference for shorter sequences that achieve the same result, discouraging pointless padding. |
+| `instruction_reduction` | `(instructions before - instructions after) / instructions before` -- the main signal: fewer TAC instructions after optimization. |
+| `cost_reduction` | Same idea, but using `estimate_cost`, which counts every arithmetic/comparison instruction (`binop`) as costing 2 units and everything else as costing 1. This lets a sequence still score a little higher even when it doesn't change the instruction *count* but does replace some computation with a cheaper form. |
 
-All ratios are clamped to `[0, 1]`. The exact weights and cost model
-are intentionally simple and fully documented in
-`evolutionary/fitness.py` so they can be explained and defended in a
-viva.
+Instruction count gets the larger weight (0.7) because it is the
+number a viva examiner can point at directly on screen; cost is a
+smaller (0.3) tie-breaker layered on top. Both ratios are clamped to
+`[0, 1]`, so a sequence can never score below 0 on either term. That's
+the entire formula -- two terms, two round weights, fully readable in
+`evolutionary/fitness.py`.
 
 ### 7.4 Genetic operators (`evolutionary/genetic_algorithm.py`)
 
-- **Initial population**: 30 chromosomes with random genes (default).
+- **Initial population**: 30 chromosomes, each 6 random genes (default).
 - **Selection**: tournament selection (3 random individuals compete,
   the fittest wins) -- simple, and avoids the premature convergence
   that pure fitness-proportionate ("roulette") selection can cause.
-- **Crossover**: single-point crossover on the gene list (probability
-  0.8 by default), producing two children whose combined length is
-  clamped back into the allowed `[min_len, max_len]` range.
-- **Mutation**: per-gene point mutation (probability 0.2 by default,
-  each gene independently replaced by a random pass), plus a smaller
-  chance to insert or delete a gene -- this is what lets sequence
-  *length* evolve, not just gene order.
+- **Crossover**: single-point crossover (probability 0.8 by default)
+  -- pick one random cut point, swap the gene-list tails between two
+  parents. Because every chromosome is the same fixed length, the two
+  children are automatically the same length too; no clamping or
+  padding logic is needed anywhere.
+- **Mutation**: point mutation (probability 0.2 by default) -- each
+  gene independently has a chance to be replaced by a randomly chosen
+  pass name. Nothing more exotic than that.
 - **Elitism**: the top 2 fittest individuals are copied unchanged into
   the next generation, which guarantees the best fitness seen so far
   can never regress across generations (verified in
@@ -332,13 +371,13 @@ print(e);
 |---|---|---|---|
 | Instructions | 12 | 6 | **3** |
 | Reduction | - | 50% | **75%** |
-| Fitness | - | ~54 | **~79** |
+| Fitness | - | ~53 | **~77** |
 | `print()` output | `[30, 30, 15]` | `[30, 30, 15]` | `[30, 30, 15]` |
 
 The traditional single-pass-each order gets stuck at
 `t1 = 30; t2 = 30; t3 = 15; print(t1); print(t2); print(t3);` because
 its one `ConstantPropagation` pass runs *before* the temporaries are
-folded into the `print` statements and Dead Code Elimination only runs
+folded into the `print` statements, and Dead Code Elimination only runs
 once, at the very end. The GA discovers that running
 `ConstantPropagation` a **second time** (after folding) propagates the
 now-constant temporaries directly into the `print` calls, after which
@@ -369,12 +408,11 @@ automated-evolutionary-compiler-optimizer/
 │   ├── copy_propagation.py
 │   ├── common_subexpression.py
 │   ├── dead_code_elimination.py
-│   ├── strength_reduction.py
-│   └── loop_invariant_code_motion.py
+│   └── strength_reduction.py
 ├── evolutionary/
 │   ├── __init__.py
-│   ├── chromosome.py                  Chromosome representation
-│   ├── fitness.py                     Fitness function
+│   ├── chromosome.py                  Fixed-length chromosome representation
+│   ├── fitness.py                     2-factor fitness function
 │   └── genetic_algorithm.py           GA: selection/crossover/mutation/elitism
 ├── templates/
 │   └── index.html
@@ -382,7 +420,7 @@ automated-evolutionary-compiler-optimizer/
 │   ├── css/style.css
 │   └── js/script.js
 └── tests/
-    └── test_optimizer.py              32 unit/integration tests
+    └── test_optimizer.py              29 unit/integration tests
 ```
 
 ## 10. Installation & How to Run
@@ -433,7 +471,7 @@ python -m unittest discover -s tests -t .
 
 ## 11. Example Input / Output
 
-Four ready-made examples are built into the UI ("Load example"
+Three ready-made examples are built into the UI ("Load example"
 buttons):
 
 - **Basic / CSE** -- constant folding, constant propagation, common
@@ -443,10 +481,6 @@ buttons):
   and shows that optimizations remain safe across control flow.
 - **While Loop** -- exercises loop lowering and Strength Reduction
   (`i * 2` inside the loop body becomes `i + i`).
-- **Loop-Invariant** -- `int step = factor * 2;` inside the loop body
-  does not depend on the loop variable `i`, so Loop-Invariant Code
-  Motion hoists it out of the loop entirely, computing it once instead
-  of on every iteration.
 
 Each example can be analyzed directly from the "Analyze & Optimize
 Code" button; the dashboard fills in with tokens, the AST, the TAC,
@@ -459,7 +493,7 @@ chart, and the final comparison table.
 big pass?** Splitting optimization into small, focused passes (each
 responsible for one transformation) keeps each pass simple, correct,
 and independently testable -- exactly the same reason this project's
-`optimizations/` package is organized as seven small classes rather than
+`optimizations/` package is organized as six small classes rather than
 one monolithic function. Real compilers (GCC, LLVM) use dozens of such
 passes.
 
@@ -493,20 +527,20 @@ combinations a human wouldn't think to try (like repeating a pass).
 
 **How do chromosomes represent optimization sequences?** Each gene in
 a chromosome is the name of one optimization pass; the chromosome's
-gene list, in order, *is* the sequence of passes to apply. Two
-chromosomes with the same passes in a different order, or with
-different lengths (including repeated passes), represent genuinely
-different optimization strategies -- see `evolutionary/chromosome.py`.
+gene list, in order, *is* the sequence of passes to apply. Every
+chromosome is a fixed length of 6 genes (repeats allowed), so two
+chromosomes with the same passes in a different order represent
+genuinely different optimization strategies -- see
+`evolutionary/chromosome.py`.
 
 **How does the fitness function evaluate optimized code?** First it
 enforces correctness: it actually *executes* both the original and
 optimized TAC with the interpreter in `compiler/interpreter.py` and
 requires their `print()` output to match exactly, or the sequence
-scores zero. Only then does it compute a weighted score from
-instruction-count reduction, an operator-aware cost-reduction estimate,
-redundant-operation reduction, temporary-variable reduction, and a
-small parsimony bonus for shorter sequences (full formula in Section
-7.3 and in the `evolutionary/fitness.py` docstring).
+scores zero. Only then does it compute `0.7 * instruction_reduction +
+0.3 * cost_reduction` (full formula in Section 7.3 and in the
+`evolutionary/fitness.py` docstring) -- deliberately just two terms
+with round weights, so it can be stated and defended in one sentence.
 
 **Why is this project relevant to Compiler Design?** It touches every
 classical phase of a compiler (lexing, parsing, IR generation,
@@ -519,17 +553,17 @@ to attack exactly this problem.
 
 ## 13. Future Improvements
 
+These are explicitly *not* built, by design -- the project stays small
+enough to explain confidently rather than chasing every possible
+extension:
+
 - Full control-flow-graph-based (rather than linear-scan) liveness
-  analysis, enabling unreachable-code elimination (e.g. pruning a
-  branch whose condition folds to a compile-time constant).
-- Extend Loop-Invariant Code Motion to loops with nested `if`/`while`
-  bodies (currently restricted to straight-line loop bodies), plus
-  loop unrolling as an additional pass.
+  analysis, enabling unreachable-code elimination.
+- Additional passes such as Loop-Invariant Code Motion or loop
+  unrolling.
 - A Graphviz-rendered AST/CFG diagram as an alternative to the current
   HTML tree view.
 - Support for functions/procedures and arrays.
-- A larger, more realistic fitness benchmark suite (multiple sample
-  programs scored together) to make the GA's advantage over the fixed
-  order even more pronounced on larger inputs.
-- Parallel/multi-population ("island model") genetic algorithm for
-  larger search spaces.
+- Variable-length chromosomes (letting the GA also search over
+  *how many* passes to run, not just their order) -- deliberately
+  left out here to keep the genetic algorithm textbook-simple.

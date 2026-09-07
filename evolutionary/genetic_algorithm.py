@@ -6,11 +6,13 @@ optimization passes in one fixed, hand-picked order, this searches the
 space of possible pass sequences for the one that yields the best
 `evaluate_fitness` score on the program at hand.
 
-Genetic operators implemented:
+A textbook, fixed-length genetic algorithm -- every chromosome is the
+same length (see chromosome.py), so there is nothing clever needed to
+combine or mutate two of them. Four standard operators:
+
     Selection  -- tournament selection (pick k random individuals, keep the fittest)
     Crossover  -- single-point crossover on the gene list
-    Mutation   -- per-gene point mutation, plus occasional insert/delete
-                  of a gene so sequence LENGTH can also evolve
+    Mutation   -- per-gene point mutation (replace a gene with a random pass)
     Elitism    -- the top-N fittest individuals are carried into the
                   next generation unchanged, guaranteeing fitness never
                   regresses from one generation to the next
@@ -20,7 +22,7 @@ import random
 from typing import List
 
 from optimizations import PASS_NAMES
-from .chromosome import Chromosome
+from .chromosome import Chromosome, CHROMOSOME_LENGTH
 from .fitness import evaluate_fitness
 from compiler.interpreter import run_tac, TACRuntimeError
 
@@ -35,8 +37,6 @@ class GeneticAlgorithm:
         crossover_rate=0.8,
         elitism_count=2,
         tournament_size=3,
-        min_len=3,
-        max_len=8,
         seed=None,
     ):
         self.instructions = instructions
@@ -46,8 +46,6 @@ class GeneticAlgorithm:
         self.crossover_rate = crossover_rate
         self.elitism_count = max(1, elitism_count)
         self.tournament_size = tournament_size
-        self.min_len = min_len
-        self.max_len = max_len
         if seed is not None:
             random.seed(seed)
 
@@ -58,10 +56,7 @@ class GeneticAlgorithm:
 
     # ---- core loop -----------------------------------------------------
     def run(self):
-        population = [
-            Chromosome(min_len=self.min_len, max_len=self.max_len)
-            for _ in range(self.population_size)
-        ]
+        population = [Chromosome() for _ in range(self.population_size)]
 
         history = []
         best_ever = None
@@ -110,50 +105,25 @@ class GeneticAlgorithm:
         return max(contenders, key=lambda c: c.fitness)
 
     def _crossover(self, parent1: Chromosome, parent2: Chromosome):
+        """Single-point crossover: swap gene tails past a random cut point.
+        Both parents are the same fixed length, so no length bookkeeping
+        is needed -- the children are automatically the same length too."""
         if random.random() > self.crossover_rate:
             return parent1.copy(), parent2.copy()
 
-        g1, g2 = list(parent1.genes), list(parent2.genes)
-        if len(g1) < 2 or len(g2) < 2:
-            return parent1.copy(), parent2.copy()
+        cut = random.randint(1, CHROMOSOME_LENGTH - 1)
+        child1_genes = parent1.genes[:cut] + parent2.genes[cut:]
+        child2_genes = parent2.genes[:cut] + parent1.genes[cut:]
+        return Chromosome(genes=child1_genes), Chromosome(genes=child2_genes)
 
-        cut1 = random.randint(1, len(g1) - 1)
-        cut2 = random.randint(1, len(g2) - 1)
-
-        child1_genes = g1[:cut1] + g2[cut2:]
-        child2_genes = g2[:cut2] + g1[cut1:]
-
-        child1_genes = self._clamp_length(child1_genes)
-        child2_genes = self._clamp_length(child2_genes)
-
-        return (
-            Chromosome(genes=child1_genes, min_len=self.min_len, max_len=self.max_len),
-            Chromosome(genes=child2_genes, min_len=self.min_len, max_len=self.max_len),
-        )
-
-    def _clamp_length(self, genes):
-        if len(genes) < self.min_len:
-            genes = genes + [random.choice(PASS_NAMES) for _ in range(self.min_len - len(genes))]
-        if len(genes) > self.max_len:
-            genes = genes[: self.max_len]
-        return genes
-
-    def _mutate(self, chrom: Chromosome):
-        genes = list(chrom.genes)
-
-        # point mutation: replace a gene with a random pass
-        for i in range(len(genes)):
-            if random.random() < self.mutation_rate:
-                genes[i] = random.choice(PASS_NAMES)
-
-        # structural mutation: occasionally insert or delete a gene so
-        # sequence length itself is part of the search space
-        if random.random() < self.mutation_rate / 2 and len(genes) < self.max_len:
-            genes.insert(random.randint(0, len(genes)), random.choice(PASS_NAMES))
-        if random.random() < self.mutation_rate / 2 and len(genes) > self.min_len:
-            del genes[random.randint(0, len(genes) - 1)]
-
-        return Chromosome(genes=genes, min_len=self.min_len, max_len=self.max_len)
+    def _mutate(self, chrom: Chromosome) -> Chromosome:
+        """Point mutation: each gene independently has a chance to be
+        replaced by a randomly chosen pass name."""
+        genes = [
+            random.choice(PASS_NAMES) if random.random() < self.mutation_rate else gene
+            for gene in chrom.genes
+        ]
+        return Chromosome(genes=genes)
 
     def _next_generation(self, population: List[Chromosome]) -> List[Chromosome]:
         next_gen = []

@@ -38,8 +38,6 @@ GA_CONFIG = dict(
     crossover_rate=0.8,
     elitism_count=2,
     tournament_size=3,
-    min_len=3,
-    max_len=8,
 )
 
 
@@ -102,8 +100,6 @@ def analyze():
     evo_instructions = best_chromosome.optimized_instructions
     evo_metrics = best_chromosome.metrics or {}
     evo_output = run_tac(evo_instructions) if evo_instructions else []
-
-    original_cost = evo_metrics.get("cost_before", trad_metrics.get("instruction_count_before"))
 
     response = {
         "tokens": [t.to_dict() for t in tokens if t.type != "EOF"],

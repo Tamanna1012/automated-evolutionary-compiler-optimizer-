@@ -35,20 +35,6 @@ while (i < 5) {
     i = i + 1;
 }
 print(sum);`,
-
-    licm:
-`// Demonstrates Loop-Invariant Code Motion: "factor * 2" does not
-// depend on the loop variable i, so it is hoisted out of the loop
-// and computed once instead of 5 times.
-int factor = 3;
-int i = 0;
-int total = 0;
-while (i < 5) {
-    int step = factor * 2;
-    total = total + step;
-    i = i + 1;
-}
-print(total);`,
 };
 
 const el = (id) => document.getElementById(id);
