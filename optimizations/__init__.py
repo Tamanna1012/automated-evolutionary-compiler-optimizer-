@@ -19,6 +19,7 @@ from .copy_propagation import CopyPropagation
 from .common_subexpression import CommonSubexpressionElimination
 from .dead_code_elimination import DeadCodeElimination
 from .strength_reduction import StrengthReduction
+from .loop_invariant_code_motion import LoopInvariantCodeMotion
 
 PASS_REGISTRY = {
     "ConstantFolding": ConstantFolding,
@@ -27,6 +28,7 @@ PASS_REGISTRY = {
     "CommonSubexpressionElimination": CommonSubexpressionElimination,
     "DeadCodeElimination": DeadCodeElimination,
     "StrengthReduction": StrengthReduction,
+    "LoopInvariantCodeMotion": LoopInvariantCodeMotion,
 }
 
 PASS_NAMES = list(PASS_REGISTRY.keys())
@@ -38,6 +40,7 @@ TRADITIONAL_SEQUENCE = [
     "ConstantPropagation",
     "ConstantFolding",
     "CopyPropagation",
+    "LoopInvariantCodeMotion",
     "CommonSubexpressionElimination",
     "StrengthReduction",
     "DeadCodeElimination",

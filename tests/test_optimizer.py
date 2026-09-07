@@ -23,6 +23,7 @@ from optimizations.copy_propagation import CopyPropagation
 from optimizations.common_subexpression import CommonSubexpressionElimination
 from optimizations.dead_code_elimination import DeadCodeElimination
 from optimizations.strength_reduction import StrengthReduction
+from optimizations.loop_invariant_code_motion import LoopInvariantCodeMotion
 
 from evolutionary.genetic_algorithm import GeneticAlgorithm
 from evolutionary.chromosome import Chromosome
@@ -204,6 +205,66 @@ class StrengthReductionTests(unittest.TestCase):
         self.assertEqual(out[0].arg1, "a")
 
 
+class LoopInvariantCodeMotionTests(unittest.TestCase):
+    def _simple_loop(self, body_instrs):
+        """label L1: t1 = i < 5; if_false t1 goto L2; <body>; goto L1; label L2"""
+        return (
+            [
+                Instruction("label", label="L1"),
+                Instruction("binop", dest="t1", op="<", arg1="i", arg2=5),
+                Instruction("if_false_goto", arg1="t1", label="L2"),
+            ]
+            + body_instrs
+            + [
+                Instruction("goto", label="L1"),
+                Instruction("label", label="L2"),
+            ]
+        )
+
+    def test_hoists_invariant_computation_out_of_loop(self):
+        body = [
+            Instruction("binop", dest="step", op="*", arg1="factor", arg2=2),
+            Instruction("binop", dest="total", op="+", arg1="total", arg2="step"),
+            Instruction("binop", dest="i", op="+", arg1="i", arg2=1),
+        ]
+        instrs = self._simple_loop(body)
+        out = LoopInvariantCodeMotion().apply(instrs)
+
+        # the "step = factor * 2" instruction must now appear BEFORE the label
+        label_idx = next(idx for idx, ins in enumerate(out) if ins.kind == "label")
+        hoisted = [ins for ins in out[:label_idx] if ins.dest == "step"]
+        self.assertEqual(len(hoisted), 1)
+
+        # and must no longer appear inside the loop body
+        inside_loop = out[label_idx:]
+        self.assertFalse(any(ins.dest == "step" for ins in inside_loop))
+
+    def test_does_not_hoist_loop_variant_computation(self):
+        # "total = total + step" depends on 'total', which IS modified every
+        # iteration by this very instruction -- it must stay inside the loop.
+        body = [
+            Instruction("binop", dest="total", op="+", arg1="total", arg2="step"),
+            Instruction("binop", dest="i", op="+", arg1="i", arg2=1),
+        ]
+        instrs = self._simple_loop(body)
+        out = LoopInvariantCodeMotion().apply(instrs)
+        self.assertEqual(self._count(out, "total"), self._count(instrs, "total"))
+
+    def test_never_hoists_division(self):
+        body = [
+            Instruction("binop", dest="q", op="/", arg1="n", arg2="divisor"),
+            Instruction("binop", dest="i", op="+", arg1="i", arg2=1),
+        ]
+        instrs = self._simple_loop(body)
+        out = LoopInvariantCodeMotion().apply(instrs)
+        label_idx = next(idx for idx, ins in enumerate(out) if ins.kind == "label")
+        self.assertFalse(any(ins.dest == "q" for ins in out[:label_idx]))
+
+    @staticmethod
+    def _count(instrs, dest_name):
+        return sum(1 for ins in instrs if ins.dest == dest_name)
+
+
 class PipelineSemanticsTests(unittest.TestCase):
     """End-to-end: optimized code must produce identical print() output."""
 
@@ -211,6 +272,8 @@ class PipelineSemanticsTests(unittest.TestCase):
         "int a = 10;\nint b = 20;\nint c = a + b;\nint d = a + b;\nint u = 100;\nprint(c);\nprint(d);",
         "int a = 7;\nint b = 3;\nint r = 0;\nif (a > b) { r = a - b; } else { r = b - a; }\nprint(r);",
         "int i = 0;\nint s = 0;\nwhile (i < 5) { s = s + i * 2; i = i + 1; }\nprint(s);",
+        "int factor = 3;\nint i = 0;\nint total = 0;\nwhile (i < 5) {\n"
+        "    int step = factor * 2;\n    total = total + step;\n    i = i + 1;\n}\nprint(total);",
     ]
 
     def test_traditional_sequence_preserves_semantics(self):

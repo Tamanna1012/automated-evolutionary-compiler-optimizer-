@@ -34,7 +34,7 @@ computes.
    simplified C-like language.
 2. Lower the AST into Three-Address Code (TAC), a standard intermediate
    representation.
-3. Implement six classic, independently-testable optimization passes
+3. Implement seven classic, independently-testable optimization passes
    operating on TAC.
 4. Implement a genuinely functional Genetic Algorithm (selection,
    crossover, mutation, elitism) that searches the space of pass
@@ -56,9 +56,9 @@ computes.
   branches and loops.
 - A tiny TAC **interpreter** used purely as a correctness oracle (see
   Section 6).
-- Six optimization passes: Constant Folding, Constant Propagation, Copy
+- Seven optimization passes: Constant Folding, Constant Propagation, Copy
   Propagation, Common Subexpression Elimination, Dead Code Elimination,
-  Strength Reduction.
+  Strength Reduction, Loop-Invariant Code Motion.
 - A real Genetic Algorithm (population of 30, 40 generations by
   default) with tournament selection, single-point crossover,
   point + structural mutation, and elitism.
@@ -69,7 +69,7 @@ computes.
 - A single-page dashboard: tokens table, AST tree, TAC listing,
   side-by-side optimization comparison, a generation-by-generation
   fitness chart, and a performance comparison table.
-- 29 automated unit/integration tests covering every pass, the parser,
+- 32 automated unit/integration tests covering every pass, the parser,
   the IR generator, the fitness function, and end-to-end semantic
   preservation.
 
@@ -197,6 +197,7 @@ independently unit-tested in `tests/test_optimizer.py`.
 | **Common Subexpression Elimination** | `common_subexpression.py` | If `a + b` was already computed in the current basic block and neither operand has changed since, reuse the earlier result instead of recomputing it (handles commutative operators and self-referential updates like `a = a + b` correctly). |
 | **Dead Code Elimination** | `dead_code_elimination.py` | Iteratively removes any instruction whose result is never used anywhere in the remaining program (fixed-point, so it cascades). |
 | **Strength Reduction** | `strength_reduction.py` | Replaces an expensive operation with a cheaper equivalent, e.g. `x * 2` -> `x + x`, `x * 1` -> `x`, `x * 0` -> `0`, `x / 1` -> `x`. |
+| **Loop-Invariant Code Motion** | `loop_invariant_code_motion.py` | Hoists a computation out of a loop's "preheader" when its value never changes across iterations (both operands are constants or variables never written inside the loop), so it runs once instead of once per iteration. Restricted to straight-line loop bodies (no nested `if`/`while`) and never hoists division, to keep the "always executes, never introduces a new error" analysis simple and safe. |
 
 All label-crossing dataflow facts (known constants, known copies,
 available expressions) are conservatively cleared at every `label`,
@@ -209,14 +210,14 @@ A **fixed traditional sequence** is also defined
 order" baseline the evolutionary search is compared against:
 
 ```
-ConstantPropagation -> ConstantFolding -> CopyPropagation ->
+ConstantPropagation -> ConstantFolding -> CopyPropagation -> LoopInvariantCodeMotion ->
 CommonSubexpressionElimination -> StrengthReduction -> DeadCodeElimination
 ```
 
 ## 7. The Evolutionary Search Engine (`evolutionary/`)
 
 ### 7.1 Why evolutionary search?
-Applying all six passes once, in *some* order, is not enough:
+Applying all seven passes once, in *some* order, is not enough:
 propagation can expose new folding opportunities, folding can expose
 new dead code, removing dead code can expose new common subexpressions,
 and so on. A single fixed pass only "sees" what came before it in that
@@ -234,7 +235,7 @@ A chromosome is simply an ordered list of pass names -- a candidate
 ["ConstantFolding", "ConstantPropagation", "CopyPropagation", "DeadCodeElimination"]
 ```
 
-Genes are drawn from the six pass names; sequence length varies (3-8
+Genes are drawn from the seven pass names; sequence length varies (3-8
 genes by default) and is itself part of what the GA searches over, so
 the algorithm can discover that, e.g., repeating `ConstantPropagation`
 after `DeadCodeElimination` helps.
@@ -368,7 +369,8 @@ automated-evolutionary-compiler-optimizer/
 │   ├── copy_propagation.py
 │   ├── common_subexpression.py
 │   ├── dead_code_elimination.py
-│   └── strength_reduction.py
+│   ├── strength_reduction.py
+│   └── loop_invariant_code_motion.py
 ├── evolutionary/
 │   ├── __init__.py
 │   ├── chromosome.py                  Chromosome representation
@@ -380,7 +382,7 @@ automated-evolutionary-compiler-optimizer/
 │   ├── css/style.css
 │   └── js/script.js
 └── tests/
-    └── test_optimizer.py              29 unit/integration tests
+    └── test_optimizer.py              32 unit/integration tests
 ```
 
 ## 10. Installation & How to Run
@@ -431,7 +433,7 @@ python -m unittest discover -s tests -t .
 
 ## 11. Example Input / Output
 
-Three ready-made examples are built into the UI ("Load example"
+Four ready-made examples are built into the UI ("Load example"
 buttons):
 
 - **Basic / CSE** -- constant folding, constant propagation, common
@@ -441,6 +443,10 @@ buttons):
   and shows that optimizations remain safe across control flow.
 - **While Loop** -- exercises loop lowering and Strength Reduction
   (`i * 2` inside the loop body becomes `i + i`).
+- **Loop-Invariant** -- `int step = factor * 2;` inside the loop body
+  does not depend on the loop variable `i`, so Loop-Invariant Code
+  Motion hoists it out of the loop entirely, computing it once instead
+  of on every iteration.
 
 Each example can be analyzed directly from the "Analyze & Optimize
 Code" button; the dashboard fills in with tokens, the AST, the TAC,
@@ -453,7 +459,7 @@ chart, and the final comparison table.
 big pass?** Splitting optimization into small, focused passes (each
 responsible for one transformation) keeps each pass simple, correct,
 and independently testable -- exactly the same reason this project's
-`optimizations/` package is organized as six small classes rather than
+`optimizations/` package is organized as seven small classes rather than
 one monolithic function. Real compilers (GCC, LLVM) use dozens of such
 passes.
 
@@ -514,8 +520,11 @@ to attack exactly this problem.
 ## 13. Future Improvements
 
 - Full control-flow-graph-based (rather than linear-scan) liveness
-  analysis, enabling unreachable-code elimination.
-- Loop-invariant code motion and loop unrolling as additional passes.
+  analysis, enabling unreachable-code elimination (e.g. pruning a
+  branch whose condition folds to a compile-time constant).
+- Extend Loop-Invariant Code Motion to loops with nested `if`/`while`
+  bodies (currently restricted to straight-line loop bodies), plus
+  loop unrolling as an additional pass.
 - A Graphviz-rendered AST/CFG diagram as an alternative to the current
   HTML tree view.
 - Support for functions/procedures and arrays.
