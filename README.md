@@ -469,6 +469,17 @@ python -m pytest tests/
 python -m unittest discover -s tests -t .
 ```
 
+### Deploying to Vercel
+
+A `vercel.json` is included, so the Flask app deploys as-is:
+
+1. Push this repo to GitHub (already done if you're reading this on GitHub).
+2. Go to [vercel.com](https://vercel.com), sign in, and click **Add New... -> Project**.
+3. Import this repository. Vercel auto-detects `vercel.json` and builds `app.py`
+   with the `@vercel/python` runtime -- no extra configuration needed.
+4. Click **Deploy**. Vercel installs `requirements.txt` and serves the app;
+   `templates/` and `static/` are picked up automatically.
+
 ## 11. Example Input / Output
 
 Three ready-made examples are built into the UI ("Load example"
